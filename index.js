@@ -1,79 +1,102 @@
-const express = require("express");
-const morgan = require("morgan");
-const cors = require("cors");
-const app = express();
-app.use(express.json());
-app.use(express.static("dist"));
-app.use(morgan("tiny"));
-app.use(cors());
+require('dotenv').config()
+const Person = require('./models/person')
 
-let persons = [
-  {
-    id: "1",
-    name: "Arto Hellas",
-    number: "040-123456",
-  },
-  {
-    id: "2",
-    name: "Ada Lovelace",
-    number: "39-44-5323523",
-  },
-  {
-    id: "3",
-    name: "Dan Abramov",
-    number: "12-43-234345",
-  },
-  {
-    id: "4",
-    name: "Mary Poppendieck",
-    number: "39-23-6423122",
-  },
-];
+const express = require('express')
+const app = express()
+app.use(express.json())
+app.use(express.static('dist'))
 
-app.get("/api/persons", (request, response) => {
-  response.json(persons);
-});
+const morgan = require('morgan')
+app.use(morgan('tiny'))
 
-app.get("/api/persons/:id", (request, response) => {
-  const person = persons.find((p) => p.id === request.params.id);
-  if (person) {
-    response.json(person);
-  } else response.sendStatus(404);
-});
+app.get('/api/persons', (response) => {
+  Person.find({}).then((persons) => response.json(persons))
+})
 
-app.delete("/api/persons/:id", (request, response) => {
-  persons = persons.filter((p) => p.id !== request.params.id);
-  response.status(204).end();
-});
+app.get('/api/persons/:id', (request, response, next) => {
+  Person.findById(request.params.id)
+    .then((person) => {
+      if (person) {
+        response.json(person)
+      } else {
+        response.sendStatus(404)
+      }
+    })
+    .catch((error) => {
+      next(error)
+    })
+})
 
-app.get("/info", (request, response) => {
-  date = new Date();
-  response.write(`<p>Phonebook has info for ${persons.length} people<p>`);
-  response.write(date.toString());
-  response.end();
-});
+app.delete('/api/persons/:id', (request, response, next) => {
+  Person.findByIdAndDelete(request.params.id)
+    .then(() => response.status(204).end())
+    .catch((error) => next(error))
+})
 
-morgan.token("body", (reg) => JSON.stringify(reg.body));
-app.use(morgan(":body"));
+app.put('/api/persons/:id', (request, response, next) => {
+  const { name, number } = request.body
+  Person.findById(request.params.id).then((person) => {
+    if (!person) {
+      return response.sendStatus(404)
+    }
 
-app.post("/api/persons", (request, response) => {
-  body = request.body;
+    person.name = name
+    person.number = number
+    // person.validate();
+    return person
+      .save()
+      .then((updatedPerson) => response.json(updatedPerson))
+      .catch((error) => next(error))
+  })
+})
 
-  if (!body.number || !body.name || persons.find((p) => p.name === body.name)) {
-    return response
-      .status(400)
-      .end("error: Person has missing fields or is already in the book");
+app.get('/info', (response, next) => {
+  const date = new Date()
+  if (date === undefined) {
+    return response.sendStatus(500)
   }
-  const person = {
+  Person.find({})
+    .then((persons) => {
+      console.log(persons)
+      response.write(`<p>Phonebook has info for ${persons.length} people<p>`)
+      response.write(date.toString())
+      response.end()
+    })
+    .catch((error) => next(error))
+})
+
+morgan.token('body', (reg) => JSON.stringify(reg.body))
+app.use(morgan(':body'))
+
+app.post('/api/persons', (request, response, next) => {
+  const body = request.body
+
+  if (!body.number || !body.name) {
+    return response.status(400).end('error: Person has missing fields')
+  }
+
+  const person = new Person({
     name: body.name,
     number: body.number,
-    id: Math.floor(Math.random() * 10000) + "",
-  };
-  persons = persons.concat(person);
-  response.json(person);
-});
+  })
+  person
+    .save()
+    .then((savedPerson) => response.json(savedPerson))
+    .catch((error) => next(error))
+})
 
-const PORT = process.env.PORT || 3001;
+const errorHandler = (error, response, next) => {
+  if (error.name === 'CastError') {
+    return response.status(400).send({ error: 'malformatted id' })
+  } else if (error.name === 'ValidationError') {
+    return response.status(400).send({ error: error.message })
+  }
+
+  next(error)
+}
+
+const PORT = process.env.PORT
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+  console.log(`Server running on port ${PORT}`)
+})
+app.use(errorHandler)
