@@ -9,7 +9,7 @@ app.use(express.static('dist'))
 const morgan = require('morgan')
 app.use(morgan('tiny'))
 
-app.get('/api/persons', (response) => {
+app.get('/api/persons', (_request, response) => {
   Person.find({}).then((persons) => response.json(persons))
 })
 
@@ -50,14 +50,13 @@ app.put('/api/persons/:id', (request, response, next) => {
   })
 })
 
-app.get('/info', (response, next) => {
+app.get('/info', (_request, response, next) => {
   const date = new Date()
   if (date === undefined) {
     return response.sendStatus(500)
   }
   Person.find({})
     .then((persons) => {
-      console.log(persons)
       response.write(`<p>Phonebook has info for ${persons.length} people<p>`)
       response.write(date.toString())
       response.end()
